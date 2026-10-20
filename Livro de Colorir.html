@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Livro de Colorir</title>
+<style>
+:root{--bg:#f6f1ea;--bar:#fff;--tx:#2a2a2a;--ac:#e0568a;--bd:#ddd;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1d1b1a;--bar:#2a2726;--tx:#eee;--bd:#444}}
+:root[data-theme="dark"]{--bg:#1d1b1a;--bar:#2a2726;--tx:#eee;--bd:#444}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;height:100%;overflow:hidden;-webkit-user-select:none;user-select:none}
+.bar{background:var(--bar);border-bottom:1px solid var(--bd);padding:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center}
+button,input[type=number]{font:inherit;color:var(--tx);background:var(--bar);border:1px solid var(--bd);border-radius:10px;padding:8px 12px;min-height:40px}
+button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+input[type=number]{width:84px}
+.sw{width:34px;height:34px;border-radius:50%;border:3px solid var(--bd);padding:0;min-height:0}
+.sw.on{border-color:var(--tx);transform:scale(1.15)}
+main{flex:1;min-height:0;container-type:size;display:grid;place-items:center}
+.wrap{position:relative;width:min(100cqw,100cqh);height:min(100cqw,100cqh);background:#fff;box-shadow:0 2px 14px #0003}
+canvas{position:absolute;inset:0;width:100%;height:100%}
+#l{pointer-events:none;mix-blend-mode:multiply}
+#p{touch-action:none;cursor:crosshair}
+</style></head><body>
+<div class="bar">
+<button id="pv">◀</button><input id="n" type="number" min="1" max="8640" value="1"><button id="nx">▶</button><button id="rn">🎲</button>
+<button id="t0" class="on">✏️ Caneta</button><button id="t1">🪣 Balde</button><button id="t2">🧽 Borracha</button>
+<input id="sz" type="range" min="2" max="40" value="10" style="width:100px">
+<button id="un">↩️</button><button id="cl">🗑️</button><button id="sv">💾</button>
+</div>
+<div class="bar" id="cols"></div>
+<main><div class="wrap"><canvas id="p" width="1000" height="1000"></canvas><canvas id="l" width="1000" height="1000"></canvas></div></main>
+<script>
+const P=document.getElementById('p'),Lc=document.getElementById('l'),pc=P.getContext('2d',{willReadFrequently:true}),L=Lc.getContext('2d',{willReadFrequently:true});
+const TOTAL=8640;let idx=1,tool=0,color='#e0568a',hist=[],penSeen=false;
+const $=id=>document.getElementById(id);
+function rng(s){return()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296}}
+function sh(f){L.beginPath();f();L.fillStyle='#fff';L.fill();L.stroke()}
+function ln(f){L.beginPath();f();L.stroke()}
+const ci=(x,y,r)=>sh(()=>L.arc(x,y,r,0,7));
+const el=(x,y,a,b,r=0)=>sh(()=>L.ellipse(x,y,a,b,r,0,7));
+const poly=p=>sh(()=>{p.forEach((q,i)=>i?L.lineTo(q[0],q[1]):L.moveTo(q[0],q[1]));L.closePath()});
+function star(x,y,s){const p=[];for(let i=0;i<10;i++){const r=(i%2?.45:1)*s,a=-Math.PI/2+i*Math.PI/5;p.push([x+r*Math.cos(a),y+r*Math.sin(a)])}poly(p)}
+function heart(x,y,s){sh(()=>{L.moveTo(x,y+30*s);L.bezierCurveTo(x-70*s,y-10*s,x-40*s,y-60*s,x,y-25*s);L.bezierCurveTo(x+40*s,y-60*s,x+70*s,y-10*s,x,y+30*s)})}
+function flower(x,y,s){for(let i=0;i<5;i++){const a=i*Math.PI*2/5;ci(x+Math.cos(a)*s*.6,y+Math.sin(a)*s*.6,s*.42)}ci(x,y,s*.3)}
+function cloud(x,y,s){sh(()=>{const P=Math.PI;L.moveTo(x-35*s,y+20*s);L.arc(x-35*s,y,20*s,P/2,P*1.5);L.arc(x-5*s,y-12*s,28*s,P,0);L.arc(x+35*s,y,20*s,P*1.5,P/2);L.closePath()})}
+function butterfly(x,y,s){el(x-28*s,y-18*s,30*s,20*s,-.5);el(x+28*s,y-18*s,30*s,20*s,.5);el(x-22*s,y+20*s,22*s,15*s,.5);el(x+22*s,y+20*s,22*s,15*s,-.5);el(x,y,7*s,32*s)}
+function bubble(x,y,s){ci(x,y,30*s);ln(()=>L.arc(x,y,20*s,3.6,4.7))}
+const slots=[[110,120],[890,120],[130,400],[870,400],[120,700],[880,700],[130,910],[870,910],[290,80],[710,80]];
+const bgF=[flower,star,heart,cloud,butterfly,bubble];
+function draw(i){
+L.clearRect(0,0,1000,1000);L.lineWidth=7;L.lineJoin=L.lineCap='round';L.strokeStyle='#000';
+const k=i-1,a=k%8,hat=Math.floor(k/8)%6,item=Math.floor(k/48)%6,bg=Math.floor(k/288)%6,face=Math.floor(k/1728)%5,R=rng(i*7919+13);
+slots.forEach(s=>{const sc=.8+R()*.7;bgF[bg](s[0]+(R()-.5)*30,s[1]+(R()-.5)*30,bg==2||bg==1?sc*(bg==1?28:1.1):sc*(bg==3?1.3:bg==0?34:bg==5?1:1.3))});
+// ears
+const m=(f)=>{f(1);f(-1)};
+const X=(d,s)=>500+s*d;
+if(a==0)m(s=>{ci(X(135,s),290,58);ci(X(135,s),290,26)});
+if(a==1||a==7)m(s=>poly([[X(155,s),330],[X(a==7?170:150,s),a==7?150:190],[X(40,s),265]]));
+if(a==2)m(s=>{el(X(90,s),150,45,125,s*-.2);el(X(90,s),160,20,85,s*-.2)});
+if(a==3)m(s=>{ci(X(150,s),300,75);ci(X(150,s),300,40)});
+if(a==4)m(s=>el(X(170,s),440,50,110,s*.3));
+if(a==5)m(s=>poly([[X(140,s),290],[X(100,s),210],[X(50,s),270]]));
+if(a==6)m(s=>ci(X(100,s),280,55));
+// feet, body, arms
+el(430,950,62,32);el(570,950,62,32);el(500,790,150,165);
+el(345,790,38,82,.4);el(655,790,38,82,-.4);
+// head
+el(500,430,185,165);
+// face
+const ey=415;
+[430,570].forEach(x=>{
+if(face==0){ci(x,ey,15);L.fillStyle='#000';L.fill()}
+else if(face==1)ln(()=>L.arc(x,ey+10,20,Math.PI,0));
+else if(face==2)star(x,ey,26);
+else if(face==3)heart(x,ey,.5);
+else ln(()=>L.arc(x,ey-5,20,.1,Math.PI-.1))});
+if(a==5){el(500,480,48,34);[480,520].forEach(x=>{ci(x,480,6);L.fillStyle='#000';L.fill()})}
+else{el(500,465,20,13);L.fillStyle='#000';L.fill();}
+if(a!=5)ln(()=>L.arc(500,478,26,.25,Math.PI-.25));
+if(a==6)ln(()=>{L.moveTo(420,520);L.quadraticCurveTo(500,570,580,520)});
+if(a==1||a==7)[-1,1].forEach(s=>{ln(()=>{L.moveTo(X(95,s),470);L.lineTo(X(190,s),455)});ln(()=>{L.moveTo(X(95,s),490);L.lineTo(X(190,s),505)})});
+[380,620].forEach(x=>ci(x,495,22));
+// hat
+if(hat==1)for(let j=0;j<5;j++){const x=390+j*55;flower(x,270-Math.abs(j-2)*-6-0,30)}
+if(hat==2){poly([[430,275],[570,275],[500,90]]);ln(()=>{L.moveTo(455,215);L.lineTo(545,215)});ln(()=>{L.moveTo(440,250);L.lineTo(560,250)});ci(500,90,18)}
+if(hat==3){poly([[500,265],[415,220],[415,310]]);poly([[500,265],[585,220],[585,310]]);ci(500,265,20)}
+if(hat==4){poly([[400,275],[400,170],[450,220],[500,150],[550,220],[600,170],[600,275]]);ci(500,150,10);ci(400,170,10);ci(600,170,10)}
+if(hat==5){sh(()=>{L.ellipse(500,285,150,110,0,Math.PI,0);L.closePath()});poly([[345,285],[655,285],[655,325],[345,325]]);ci(500,172,26)}
+// item
+if(item==0)heart(500,775,1.5);
+if(item==1)flower(500,775,110);
+if(item==2){poly([[450,770],[550,770],[500,910]]);ci(500,735,56);ln(()=>L.arc(500,735,32,3.6,4.7))}
+if(item==3){ln(()=>{L.moveTo(545,830);L.quadraticCurveTo(620,780,660,700)});el(670,630,62,78,.2);poly([[655,705],[685,705],[670,725]])}
+if(item==4)star(500,775,95);
+if(item==5){poly([[440,830],[560,830],[545,915],[455,915]]);el(500,812,72,40);ci(500,760,16)}
+$('n').value=i}
+// undo/history
+function snap(){hist.push(pc.getImageData(0,0,1000,1000));if(hist.length>25)hist.shift()}
+function reset(){pc.fillStyle='#fff';pc.fillRect(0,0,1000,1000);hist=[]}
+function go(i){idx=((i-1+TOTAL)%TOTAL)+1;draw(idx);reset()}
+// colors
+const pal=['#e53935','#ff7043','#ffb300','#fdd835','#9ccc65','#43a047','#26c6da','#1e88e5','#5e35b1','#ec407a','#8d6e63','#000000','#9e9e9e','#ffffff','#ffcdd2','#f8bbd0','#b3e5fc','#c8e6c9'];
+pal.forEach(c=>{const b=document.createElement('button');b.className='sw';b.style.background=c;b.onclick=()=>setC(c,b);$('cols').appendChild(b)});
+const cp=document.createElement('input');cp.type='color';cp.value='#e0568a';cp.style.cssText='width:44px;height:36px;border:none;background:none';cp.oninput=()=>{setC(cp.value,null)};$('cols').appendChild(cp);
+function setC(c,b){color=c;document.querySelectorAll('.sw').forEach(x=>x.classList.remove('on'));if(b)b.classList.add('on');if(tool==2)setT(0)}
+function setT(t){tool=t;[0,1,2].forEach(i=>$('t'+i).classList.toggle('on',i==t))}
+[0,1,2].forEach(i=>$('t'+i).onclick=()=>setT(i));
+$('pv').onclick=()=>go(idx-1);$('nx').onclick=()=>go(idx+1);
+$('rn').onclick=()=>go(1+Math.floor(Math.random()*TOTAL));
+$('n').onchange=()=>go(parseInt($('n').value)||1);
+$('un').onclick=()=>{const h=hist.pop();if(h)pc.putImageData(h,0,0)};
+$('cl').onclick=()=>{snap();pc.fillStyle='#fff';pc.fillRect(0,0,1000,1000)};
+$('sv').onclick=()=>{const t=document.createElement('canvas');t.width=t.height=1000;const c=t.getContext('2d');c.drawImage(P,0,0);c.globalCompositeOperation='multiply';c.drawImage(Lc,0,0);const a=document.createElement('a');a.download='desenho-'+idx+'.png';a.href=t.toDataURL();a.click()};
+// fill
+function fill(x,y){
+x=Math.floor(x);y=Math.floor(y);const lp=L.getImageData(0,0,1000,1000).data,img=pc.getImageData(0,0,1000,1000),d=img.data;
+const bar=i=>lp[i*4+3]>110&&lp[i*4]<140;
+if(bar(y*1000+x))return;snap();
+const r=parseInt(color.slice(1,3),16),g=parseInt(color.slice(3,5),16),b=parseInt(color.slice(5,7),16);
+const seen=new Uint8Array(1e6),st=[y*1000+x];seen[st[0]]=1;
+while(st.length){const i=st.pop(),px=i%1000,py=(i-px)/1000;d[i*4]=r;d[i*4+1]=g;d[i*4+2]=b;d[i*4+3]=255;
+for(const j of[px>0?i-1:-1,px<999?i+1:-1,py>0?i-1000:-1,py<999?i+1000:-1]){if(j>=0&&!seen[j]){seen[j]=1;if(!bar(j))st.push(j)}}}
+// grow 2px under lines so no white halo
+pc.putImageData(img,0,0)}
+// drawing
+let down=false,lx,ly;
+function pos(e){const r=P.getBoundingClientRect();return[(e.clientX-r.left)*1000/r.width,(e.clientY-r.top)*1000/r.height]}
+P.addEventListener('pointerdown',e=>{
+if(e.pointerType=='pen')penSeen=true;if(e.pointerType=='touch'&&penSeen)return;
+e.preventDefault();const[x,y]=pos(e);
+if(tool==1){fill(x,y);return}
+snap();down=true;lx=x;ly=y;P.setPointerCapture(e.pointerId);stroke(x,y,x,y,e)});
+P.addEventListener('pointermove',e=>{if(!down)return;e.preventDefault();const ev=e.getCoalescedEvents?e.getCoalescedEvents():[e];(ev.length?ev:[e]).forEach(q=>{const[x,y]=pos(q);stroke(lx,ly,x,y,q);lx=x;ly=y})});
+['pointerup','pointercancel'].forEach(t=>P.addEventListener(t,()=>down=false));
+function stroke(x1,y1,x2,y2,e){const pr=e.pointerType=='pen'&&e.pressure>0?e.pressure*1.6+.3:1;
+pc.strokeStyle=tool==2?'#fff':color;pc.lineCap='round';pc.lineWidth=$('sz').value*(tool==2?2:1)*pr;
+pc.beginPath();pc.moveTo(x1,y1);pc.lineTo(x2,y2);pc.stroke()}
+go(1+Math.floor(Math.random()*TOTAL));
+</script></body></html>
